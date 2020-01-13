@@ -8,12 +8,39 @@
 
 #import "AppDelegate.h"
 #import "WindowController.h"
-#import "MASPreferencesWindowController.h"
-#import "GeneralPreferencesViewController.h"
-#import "AdvancedPreferencesViewController.h"
+#import "AppPrefsWindowsController.h"
+#import "CCNStatusItem.h"
+#import "CCNStatusItemWindowConfiguration.h"
+#import "ContentViewController.h"
+
+
 
 @implementation AppDelegate
 
++ (void)initialize {
+    if ( self == [AppDelegate class] ) {
+        NSDictionary *defaultValues = @{Aria2GUI_MAX_CONCURRENT_DOWNLOADS: @(10),
+                                        Aria2GUI_MAX_DOWNLOAD_SPEED:@(0),
+                                        Aria2GUI_MAX_UPLOAD_SPEED:@(0),
+                                        Aria2GUI_MAX_PER_DOWNLOAD_SPEED:@(0),
+                                        Aria2GUI_MAX_PER_UPLOAD_SPEED:@(0),
+                                        Aria2GUI_PROXY_STATE:@(NO),
+                                        Aria2GUI_USER_STATE:@(NO),
+                                        Aria2GUI_DISK_CACHE:@(0),
+                                        Aria2GUI_MAX_CONNECTION_PER_SERVER:@(16),
+                                        Aria2GUI_MIN_SPLIT_SIZE:@(1024),
+                                        Aria2GUI_SPLIT:@(16),
+                                        Aria2GUI_ALLOW_OVERWRITE_STATE:@("true"),
+                                        Aria2GUI_AUTO_FILE_RENAMEING_STATE:@("true"),
+                                        Aria2GUI_CONTIUNE:@("true"),
+                                        Aria2GUI_LOG_FILE_STATE:@(NO),
+                                        Aria2GUI_MAX_TRIES:@(0),
+                                        Aria2GUI_RETRY_WAIT:@(5),
+                                        };
+        [[NSUserDefaults standardUserDefaults] registerDefaults:defaultValues];
+        [[NSUserDefaultsController sharedUserDefaultsController] setInitialValues:defaultValues];
+    }
+}
 - (void)applicationWillFinishLaunching:(NSNotification *)aNotification
 {
     [self startAria2];
@@ -28,10 +55,26 @@
 }
 
 - (void) applicationDidFinishLaunching:(NSNotification *)aNotification {
-    self.windowController = [[WindowController alloc] initWithURL: kStartPage];
+    
+    bool statusBarState = [[NSUserDefaults standardUserDefaults] boolForKey:Aria2GUI_STATUS_BAR_STATE];
+    if(!statusBarState)
+    {
+        NSArray *languages = [NSLocale preferredLanguages];
+        NSString *currentLanguage = [languages objectAtIndex:0];
+        if([currentLanguage  isEqual: @"zh-Hans-CN"])
+        {
+            self.windowController = [[WindowController alloc] initWithURL: kStartPage_ZH];
+        }
+        else
+            self.windowController = [[WindowController alloc] initWithURL: kStartPage];
     [self.windowController setWindowParams];
     [self.windowController showWindow:self];
     [[NSUserNotificationCenter defaultUserNotificationCenter] setDelegate:self];
+    }
+    else
+    //[self showStatusBar];
+    [[CCNStatusItem sharedInstance] presentStatusItemWithImage:[NSImage imageNamed:@"aria2@2x.png"]
+                                             contentViewController:[ContentViewController viewController]];
 }
 
 - (BOOL)userNotificationCenter:(NSUserNotificationCenter *)center
@@ -47,70 +90,102 @@
 
 -(void)startAria2
 {
-    NSFileManager *fileManager = [NSFileManager defaultManager];
-    NSString *supportPath=[NSSearchPathForDirectoriesInDomains(NSApplicationSupportDirectory, NSUserDomainMask, YES) objectAtIndex:0];
-    NSString *path = [NSString stringWithFormat:@"%@/%@/sh/",supportPath,[[NSBundle mainBundle] bundleIdentifier]];
-    [fileManager createDirectoryAtPath:path withIntermediateDirectories:YES attributes:nil error:NULL];
-    NSString *startAriaPath = [path stringByAppendingPathComponent:@"Aria2GUI.sh"];
-    //~/Library/Application Support/com.Aria2GUI/sh/
-    [fileManager createFileAtPath:startAriaPath contents:nil attributes:nil];
-    
-    NSString *dir = [@"~/Downloads/" stringByExpandingTildeInPath];
+    NSString *startAriaPath = [[NSBundle mainBundle] pathForResource:@"startAria2" ofType:@"sh"];
+    NSString *dir = [[NSUserDefaults standardUserDefaults] objectForKey:Aria2GUI_SAVE_PATH];
+    NSString *proxyHost = [[NSUserDefaults standardUserDefaults] objectForKey:Aria2GUI_PROXY_HOST];
+    NSInteger proxyPort = [[NSUserDefaults standardUserDefaults] integerForKey:Aria2GUI_PROXY_PORT];
+    NSString *proxyUser = [[NSUserDefaults standardUserDefaults] objectForKey:Aria2GUI_PROXY_USER];
+    NSString *proxyPassword = [[NSUserDefaults standardUserDefaults] objectForKey:Aria2GUI_PROXY_PASSWORD];
+    NSString *proxyType = [[NSUserDefaults standardUserDefaults] objectForKey:Aria2GUI_PROXY_TYPE];
 
-    NSString *shCommand = [NSString stringWithFormat:@"%@ --dir=%@ --conf-path=%@ --input-file=%@ --save-session=%@ -D",[[NSBundle mainBundle] pathForResource:@"aria2gui" ofType:nil],dir,[[NSBundle mainBundle] pathForResource:@"aria2" ofType:@"conf"],[[NSBundle mainBundle] pathForResource:@"aria2" ofType:@"session"],[[NSBundle mainBundle] pathForResource:@"aria2" ofType:@"session"]];
-                               
+    bool proxyState = [[NSUserDefaults standardUserDefaults] boolForKey:Aria2GUI_PROXY_STATE];
+    bool userState = [[NSUserDefaults standardUserDefaults] boolForKey:Aria2GUI_USER_STATE];
+    
+    
+    if (!dir || [dir length] == 0)
+    {
+        dir = [@"~/Downloads" stringByExpandingTildeInPath];
+    }
+    
+    double maxDownloadSpeedIn = [[NSUserDefaults standardUserDefaults] doubleForKey:Aria2GUI_MAX_DOWNLOAD_SPEED];
+    NSString *maxDownloadSpeedStr = [NSString stringWithFormat:@"%d", (int)(maxDownloadSpeedIn * 1000)];
+    
+    double maxPerDownloadSpeedIn = [[NSUserDefaults standardUserDefaults] doubleForKey:Aria2GUI_MAX_PER_DOWNLOAD_SPEED];
+    NSString *maxPerDownloadSpeedStr = [NSString stringWithFormat:@"%d", (int)(maxPerDownloadSpeedIn * 1000)];
+    
+    double maxUploadSpeedIn = [[NSUserDefaults standardUserDefaults] doubleForKey:Aria2GUI_MAX_UPLOAD_SPEED];
+    NSString *maxUploadSpeedStr = [NSString stringWithFormat:@"%d", (int)maxUploadSpeedIn];
+    
+    double maxPerUploadSpeedIn = [[NSUserDefaults standardUserDefaults] doubleForKey:Aria2GUI_MAX_PER_UPLOAD_SPEED];
+    NSString *maxPerUploadSpeedStr = [NSString stringWithFormat:@"%d", (int)maxPerUploadSpeedIn];
+    
+    NSString *shCommand = [NSString stringWithFormat:@"%@ --dir=%@ --conf-path=%@  --input-file=%@ --save-session=%@  --max-concurrent-downloads=%@ --max-connection-per-server=%@ --min-split-size=%@K --split=%@  --max-overall-download-limit=%@K --max-overall-upload-limit=%@K --max-download-limit=%@K --max-upload-limit=%@K --continue=%@ --auto-file-renaming=%@ --allow-overwrite=%@ --disk-cache=%@M --max-tries=%@ --retry-wait=%@ -D ",[[NSBundle mainBundle] pathForResource:@"aria2c" ofType:nil],dir,[[NSBundle mainBundle] pathForResource:@"aria2" ofType:@"conf"],[[NSBundle mainBundle] pathForResource:@"aria2" ofType:@"session"],[[NSBundle mainBundle] pathForResource:@"aria2" ofType:@"session"],[[NSUserDefaults standardUserDefaults] objectForKey:Aria2GUI_MAX_CONCURRENT_DOWNLOADS],[[NSUserDefaults standardUserDefaults] objectForKey:Aria2GUI_MAX_CONNECTION_PER_SERVER],[[NSUserDefaults standardUserDefaults] objectForKey:Aria2GUI_MIN_SPLIT_SIZE],[[NSUserDefaults standardUserDefaults] objectForKey:Aria2GUI_SPLIT],maxDownloadSpeedStr,maxUploadSpeedStr,maxPerDownloadSpeedStr,maxPerUploadSpeedStr,[[NSUserDefaults standardUserDefaults] objectForKey:Aria2GUI_CONTIUNE],[[NSUserDefaults standardUserDefaults] objectForKey:Aria2GUI_AUTO_FILE_RENAMEING_STATE],[[NSUserDefaults standardUserDefaults] objectForKey:Aria2GUI_ALLOW_OVERWRITE_STATE],[[NSUserDefaults standardUserDefaults] objectForKey:Aria2GUI_DISK_CACHE],[[NSUserDefaults standardUserDefaults] objectForKey:Aria2GUI_MAX_TRIES],[[NSUserDefaults standardUserDefaults] objectForKey:Aria2GUI_RETRY_WAIT]];
     [shCommand writeToFile:startAriaPath atomically:YES encoding:NSUTF8StringEncoding error:nil];
+
+    NSFileHandle *fileHandle = [NSFileHandle fileHandleForUpdatingAtPath:startAriaPath];
+    
+    [fileHandle seekToEndOfFile];
+
+    if (proxyState == YES && userState == YES)
+    {
+        NSString *shCommand = [NSString stringWithFormat:@"--%@-proxy='http://%@:%@@%@:%ld'",proxyType,proxyUser,proxyPassword,proxyHost,(long)proxyPort];
+        NSData* stringData  = [shCommand dataUsingEncoding:NSUTF8StringEncoding];
+        [fileHandle writeData:stringData];
+        [fileHandle closeFile];
+    }
+    
+    else
+        if(proxyState == YES && userState == NO)
+    {
+        NSString *shCommand = [NSString stringWithFormat:@"--%@-proxy='http://%@:%ld'",proxyType,proxyHost,(long)proxyPort];
+        NSData* stringData  = [shCommand dataUsingEncoding:NSUTF8StringEncoding];
+        [fileHandle writeData:stringData];
+        [fileHandle closeFile];
+    }
+    
+    else
+        if ([[NSUserDefaults standardUserDefaults] boolForKey:Aria2GUI_LOG_FILE_STATE] == YES)
+    {
+        NSString *shCommand = [NSString stringWithFormat:@"--log=%@",[[NSBundle mainBundle] pathForResource:@"aria2" ofType:@"log"]];
+        NSData* stringData  = [shCommand dataUsingEncoding:NSUTF8StringEncoding];
+        [fileHandle writeData:stringData];
+        [fileHandle closeFile];
         
+    }
+    
+
     NSTask *task = [[NSTask alloc] init];
     task.launchPath = @"/bin/sh";
     task.arguments = @[startAriaPath];
     [task launch];
-
 }
 
 -(void)closeAria2
 {
-    NSArray *arg =[NSArray arrayWithObjects:@"aria2gui",nil];
+    NSArray *arg =[NSArray arrayWithObjects:@"aria2c",nil];
     NSTask *task=[[NSTask alloc] init];
     task.launchPath = @"/usr/bin/killall";
     task.arguments = arg;
     [task launch];
+    [NSApp terminate:self];
+
 }
 
-- (IBAction)openPreferences:(id __unused)sender
+- (IBAction)openPreferences:(id)sender
 {
-    [self.preferencesWindowController showWindow:nil];
+    [[AppPrefsWindowsController sharedPrefsWindowController] showWindow:nil];
 }
 
-
-- (NSWindowController *)preferencesWindowController
+- (IBAction)openIssue:(id)sender
 {
-    if (_preferencesWindowController == nil)
-    {
-        NSViewController *generalViewController = [[GeneralPreferencesViewController alloc] init];
-        NSViewController *advancedViewController = [[AdvancedPreferencesViewController alloc] init];
-        NSArray *controllers = [[NSArray alloc] initWithObjects:generalViewController, advancedViewController, nil];
-        NSString *title = NSLocalizedString(@"Preferences", @"Common title for Preferences window");
-        _preferencesWindowController = [[MASPreferencesWindowController alloc] initWithViewControllers:controllers title:title];
-    }
-    return _preferencesWindowController;
+    NSURL *url = [NSURL URLWithString:@"https://github.com/yangshun1029/aria2gui/issues"];
+    [[NSWorkspace sharedWorkspace] openURL:url];
 }
 
-
-
-NSString *const kFocusedAdvancedControlIndex = @"FocusedAdvancedControlIndex";
-
-- (NSInteger)focusedAdvancedControlIndex
+-(IBAction)checkForUpdate:(id)sender
 {
-    return [[NSUserDefaults standardUserDefaults] integerForKey:kFocusedAdvancedControlIndex];
+    NSURL *url = [NSURL URLWithString:@"https://github.com/yangshun1029/aria2gui/releases"];
+    [[NSWorkspace sharedWorkspace] openURL:url];
 }
-
-- (void)setFocusedAdvancedControlIndex:(NSInteger)focusedAdvancedControlIndex
-{
-    [[NSUserDefaults standardUserDefaults] setInteger:focusedAdvancedControlIndex forKey:kFocusedAdvancedControlIndex];
-}
-
-
-
 
 @end

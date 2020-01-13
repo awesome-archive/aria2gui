@@ -15,11 +15,11 @@
                 "File" : "File"
                  },
     "window" : {
-        "title" : "Aria2GUI",
+        "title" : "",
         "width" : 900,
-        "height" : 600,
+        "height" : 660,
         "position": "center",
-        "min_width": 840,
+        "min_width": 900,
         "min_height": 660,
         "opaque": 0,
         "alpha": 0
